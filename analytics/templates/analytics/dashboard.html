@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Analytics Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-base: #0b1120;
+            --bg-surface: #1e293b;
+            --bg-input: #0f172a;
+            --primary: #00f6ff;
+            --primary-hover: #00c3cc;
+            --primary-glow: rgba(0, 246, 255, 0.3);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif; background-color: var(--bg-base);
+            background-image: radial-gradient(circle at 15% 50%, rgba(0, 246, 255, 0.08), transparent 25%),
+                              radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.08), transparent 25%);
+            color: var(--text-main); margin: 0; padding: 40px 20px;
+            display: flex; justify-content: center; align-items: center; min-height: 100vh; box-sizing: border-box;
+        }
+
+        .dashboard-container {
+            background: var(--bg-surface); width: 100%; max-width: 550px; padding: 40px;
+            border-radius: 16px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border);
+        }
+
+        .header { text-align: center; margin-bottom: 32px; }
+        .header h2 { margin: 0; font-size: 24px; font-weight: 700; color: var(--text-main); text-shadow: 0 0 10px rgba(255, 255, 255, 0.1); }
+        .header p { margin-top: 8px; color: var(--text-muted); font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        
+        label { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; color: var(--text-muted); }
+
+        input[type="number"] {
+            width: 100%; padding: 12px 16px; border: 1px solid var(--border);
+            border-radius: 8px; background-color: var(--bg-input); color: var(--primary);
+            font-size: 16px; font-family: 'JetBrains Mono', monospace; transition: all 0.3s ease; box-sizing: border-box;
+        }
+
+        input[type="number"]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 15px var(--primary-glow); }
+
+        .submit-btn {
+            width: 100%; background-color: transparent; color: var(--primary); padding: 14px; border: 1px solid var(--primary);
+            border-radius: 8px; font-size: 15px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+            cursor: pointer; transition: all 0.3s ease; margin-top: 10px; box-shadow: 0 0 10px rgba(0, 246, 255, 0.1);
+        }
+
+        .submit-btn:hover { background-color: var(--primary); color: var(--bg-base); box-shadow: 0 0 20px var(--primary-glow); transform: translateY(-2px); }
+
+        .results-card { margin-top: 32px; padding: 24px; background: rgba(0, 0, 0, 0.2); border-radius: 12px; border: 1px solid var(--border); }
+        .results-title { margin: 0 0 16px 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--primary); border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+        .metric { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; color: var(--text-muted); }
+        .metric-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 20px; color: var(--text-main); }
+        .risk-badge { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; background: rgba(255, 255, 255, 0.05); padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border); }
+        
+        .chart-container { margin-top: 24px; height: 200px; width: 100%; position: relative; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <div class="header">
+        <h2>⚡ SYSTEM.PREDICT</h2>
+        <p>Initialize behavioral metrics to execute predictive models.</p>
+    </div>
+
+    <form method="POST">
+        {% csrf_token %}
+        <div class="form-group">
+            <label>Initial Purchase Value (USD)</label>
+            <input type="number" step="0.01" name="initial_value" value="{{ input_values.val|default:150.00 }}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Session Frequency (30 Days)</label>
+            <input type="number" name="logins" value="{{ input_values.logins|default:12 }}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Days Inactive</label>
+            <input type="number" name="days_inactive" value="{{ input_values.inactive|default:5 }}" required>
+        </div>
+
+        <button type="submit" class="submit-btn">Execute Engine</button>
+    </form>
+
+    {% if prediction_made %}
+    <div class="results-card">
+        <h3 class="results-title">Output Generated</h3>
+        <div class="metric">
+            <span>Predicted LTV:</span>
+            <span class="metric-value">${{ predicted_ltv }}</span>
+        </div>
+        <div class="metric">
+            <span>Retention Protocol:</span>
+            <span class="risk-badge">{{ churn_risk }}</span>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="ltvChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('ltvChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Initial Value', 'Predicted Lifetime Value'],
+                datasets: [{
+                    label: 'USD ($)',
+                    data: [{{ input_values.val }}, {{ predicted_ltv }}],
+                    backgroundColor: [
+                        'rgba(148, 163, 184, 0.2)', // Dull gray for initial
+                        'rgba(0, 246, 255, 0.6)'    // Glowing cyan for predicted
+                    ],
+                    borderColor: [
+                        '#94a3b8',
+                        '#00f6ff'
+                    ],
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono' } }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { family: 'Inter' } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    </script>
+    {% endif %}
+</div>
+
+</body>
+</html>
